@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Booking request</title>
+<style>
+/* mobile fix (always first) */
+html,body{overflow-x:hidden;margin:0;padding:0;width:100%;}
+*,*::before,*::after{box-sizing:border-box;}
+
+:root{
+  --ink:#16272e;
+  --muted:#5b6f77;
+  --line:#c5d5db;
+  --field:#ffffff;
+  --page:#f2f6f7;
+  --sea:#0a5b75;
+  --sea-dark:#07455a;
+  --wa:#1fa855;
+  --error:#a3261f;
+  --radius:6px;
+}
+body{background:var(--page);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
+
+.booking{max-width:560px;margin:0 auto;padding:1.25rem 1rem 2.5rem;}
+.booking h1{font-size:1.5rem;line-height:1.25;margin:0 0 .5rem;}
+.booking .intro{margin:0 0 1.25rem;color:var(--muted);}
+
+form{display:grid;gap:1rem;}
+.row{display:grid;gap:1rem;grid-template-columns:1fr;}
+@media (min-width:520px){.row{grid-template-columns:1fr 1fr;}}
+
+label{display:block;font-weight:600;font-size:.95rem;margin-bottom:.3rem;}
+input,select,textarea{
+  width:100%;max-width:100%;font:inherit;color:inherit;background:var(--field);
+  border:1px solid var(--line);border-radius:var(--radius);padding:.7rem .75rem;min-height:2.9rem;
+}
+textarea{min-height:5.5rem;resize:vertical;}
+input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-visible,a:focus-visible{
+  outline:3px solid #7cc4dc;outline-offset:1px;
+}
+input:invalid:not(:placeholder-shown):not(:focus){border-color:var(--error);}
+
+.consent{display:grid;grid-template-columns:auto 1fr;gap:.75rem;align-items:start;font-size:.88rem;color:var(--muted);}
+.consent input{width:1.25rem;min-height:1.25rem;height:1.25rem;margin-top:.15rem;}
+.consent a{color:var(--sea);}
+
+button.send{
+  font:inherit;font-weight:700;color:#fff;background:var(--sea);border:0;border-radius:var(--radius);
+  padding:.9rem 1rem;min-height:3rem;cursor:pointer;
+}
+button.send:hover{background:var(--sea-dark);}
+button.send[disabled]{opacity:.65;cursor:progress;}
+
+.wa{display:block;text-align:center;font-weight:600;color:var(--wa);text-decoration:none;
+  border:1px solid var(--wa);border-radius:var(--radius);padding:.75rem 1rem;}
+.wa:hover{background:#eef9f2;}
+
+.hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden;}
+.msg{padding:1rem;border-radius:var(--radius);background:#fff;border:1px solid var(--line);}
+.msg.err{border-color:var(--error);color:var(--error);}
+.msg h2{margin:0 0 .25rem;font-size:1.15rem;}
+.msg p{margin:0;}
+</style>
+</head>
+<body>
+
+<main class="booking">
+  <h1 id="t-title"></h1>
+  <p class="intro" id="t-intro"></p>
+
+  <form id="bookingForm" novalidate>
+    <div>
+      <label for="tour" id="t-tour"></label>
+      <select id="tour" name="tour" required></select>
+    </div>
+
+    <div class="row">
+      <div>
+        <label for="date" id="t-date"></label>
+        <input type="date" id="date" name="date" required>
+      </div>
+      <div>
+        <label for="guests" id="t-guests"></label>
+        <select id="guests" name="guests" required></select>
+      </div>
+    </div>
+
+    <div>
+      <label for="name" id="t-name"></label>
+      <input type="text" id="name" name="name" autocomplete="name" required>
+    </div>
+
+    <div class="row">
+      <div>
+        <label for="phone" id="t-phone"></label>
+        <input type="tel" id="phone" name="phone" autocomplete="tel" inputmode="tel"
+               pattern="[+0-9 ()\-]{7,20}" placeholder="+49 …" required>
+      </div>
+      <div>
+        <label for="email" id="t-email"></label>
+        <input type="email" id="email" name="email" autocomplete="email" required>
+      </div>
+    </div>
+
+    <div>
+      <label for="message" id="t-message"></label>
+      <textarea id="message" name="message"></textarea>
+    </div>
+
+    <!-- honeypot: bots fill it, people never see it -->
+    <div class="hp" aria-hidden="true">
+      <input type="text" name="_honey" tabindex="-1" autocomplete="off">
+    </div>
+
+    <label class="consent">
+      <input type="checkbox" id="consent" name="consent" required>
+      <span id="t-consent"></span>
+    </label>
+
+    <button class="send" type="submit" id="t-send"></button>
+    <a class="wa" id="waLink" href="#" target="_blank" rel="noopener"></a>
+  </form>
+
+  <div id="result" role="status" aria-live="polite" hidden></div>
+</main>
+
+<script>
+/* ==== EDIT THESE ==== */
+const CONFIG = {
+  siteName: "SITE NAME",                       // your site's name, used in the consent text
+  formEmail: "YOUR@EMAIL.COM",                 // FormSubmit.co: first submit sends an activation email
+  whatsapp: "385XXXXXXXXX",                    // digits only, with country code, no +
+  privacy: { en: "/privacy/", de: "/de/datenschutz/", it: "/it/privacy/",
+              pl: "/pl/polityka-prywatnosci/", cs: "/cs/ochrana-osobnich-udaju/", hu: "/hu/adatvedelem/", sk: "/sk/ochrana-osobnych-udajov/" }
+};
+const TOURS = [   // id = matches ?tour=... in links from tour pages; name = operator/boat shown next to the tour; operator = for your tracking sheet
+  { id: "day-vacation-istria", name: "Vacation Istria (day tour)", operator: "Vacation Istria",
+    label: { en: "Brijuni day tour with swimming", de: "Brijuni-Tagesausflug mit Baden", it: "Escursione giornaliera alle Brioni con bagno",
+             pl: "Całodniowa wycieczka na Brijuni z kąpielą", cs: "Celodenní výlet na Brijuni s koupáním", hu: "Brijuni egésznapos kirándulás fürdéssel", sk: "Celodenný výlet na Brijuni s kúpaním" } },
+  { id: "sunset-vacation-istria", name: "Vacation Istria", operator: "Vacation Istria",
+    label: { en: "Sunset & dolphin cruise", de: "Sonnenuntergangsfahrt mit Delfinen", it: "Crociera al tramonto con delfini",
+             pl: "Rejs o zachodzie słońca z delfinami", cs: "Plavba při západu slunce s delfíny", hu: "Naplemente-hajókirándulás delfinekkel", sk: "Plavba pri západe slnka s delfínmi" } },
+  { id: "dolphin-europa", name: "Boat Europa", operator: "Pula Boat Tours Adventures",
+    label: { en: "Dolphin & sunset cruise", de: "Delfintour bei Sonnenuntergang", it: "Tour dei delfini al tramonto",
+             pl: "Rejs z delfinami o zachodzie słońca", cs: "Plavba s delfíny při západu slunce", hu: "Delfines naplementekirándulás", sk: "Plavba s delfínmi pri západe slnka" } },
+  { id: "dolphin-boreas", name: "Boreas", operator: "Pula Dolphin",
+    label: { en: "Dolphin watching trip", de: "Delfin-Beobachtungsfahrt", it: "Uscita per vedere i delfini",
+             pl: "Wycieczka z obserwacją delfinów", cs: "Výlet za delfíny", hu: "Delfinlesős kirándulás", sk: "Výlet za delfínmi" } },
+  { id: "dolphin-arena", name: "Arena / Ana", operator: "Arena Boat Tours Pula",
+    label: { en: "Dolphin sunset tour", de: "Delfintour bei Sonnenuntergang", it: "Tour dei delfini al tramonto",
+             pl: "Rejs z delfinami o zachodzie słońca", cs: "Plavba s delfíny při západu slunce", hu: "Delfines naplementekirándulás", sk: "Plavba s delfínmi pri západe slnka" } }
+];
+/* ==================== */
+
+const T = {
+  en: {
+    title: "Request a booking",
+    intro: "Tell us what and when. We check availability with the operator and reply within 24 hours. No payment on this site.",
+    tour: "Tour", choose: "Choose a tour", date: "Preferred date", guests: "Guests",
+    name: "Full name", phone: "Phone (WhatsApp if possible)", email: "Email",
+    message: "Message (optional)", messagePh: "Children's ages, hotel or pick-up point, special requests",
+    consent: "I agree that {site} may pass my name, phone number and booking details to the selected tour operator to process my booking, and that {site} and the operator may contact me by phone, WhatsApp or email about it. {site} may also contact me after the tour to confirm it took place. I can withdraw my consent at any time.",
+    privacy: "Privacy Policy", send: "Send request", sending: "Sending…",
+    okTitle: "Request sent", ok: "Thank you. We'll reply by email or WhatsApp within 24 hours.",
+    err: "Something went wrong. Please try again or write to us on WhatsApp.",
+    wa: "Prefer WhatsApp? Message us"
+  },
+  de: {
+    title: "Buchung anfragen",
+    intro: "Sagen Sie uns, was und wann. Wir prüfen die Verfügbarkeit beim Veranstalter und antworten innerhalb von 24 Stunden. Keine Zahlung auf dieser Website.",
+    tour: "Tour", choose: "Tour wählen", date: "Wunschdatum", guests: "Personen",
+    name: "Vor- und Nachname", phone: "Telefon (möglichst WhatsApp)", email: "E-Mail",
+    message: "Nachricht (optional)", messagePh: "Alter der Kinder, Hotel oder Abholort, besondere Wünsche",
+    consent: "Ich bin damit einverstanden, dass {site} meinen Namen, meine Telefonnummer und meine Buchungsangaben an den ausgewählten Tourveranstalter weitergibt, damit dieser meine Buchung bearbeiten kann, und dass {site} und der Veranstalter mich diesbezüglich telefonisch, per WhatsApp oder per E-Mail kontaktieren dürfen. {site} darf mich nach der Tour außerdem kontaktieren, um deren Durchführung zu bestätigen. Ich kann meine Einwilligung jederzeit widerrufen.",
+    privacy: "Datenschutzerklärung", send: "Anfrage senden", sending: "Wird gesendet…",
+    okTitle: "Anfrage gesendet", ok: "Vielen Dank. Wir melden uns innerhalb von 24 Stunden per E-Mail oder WhatsApp.",
+    err: "Etwas ist schiefgelaufen. Bitte versuchen Sie es erneut oder schreiben Sie uns per WhatsApp.",
+    wa: "Lieber per WhatsApp? Schreiben Sie uns"
+  },
+  it: {
+    title: "Richiedi una prenotazione",
+    intro: "Dicci cosa e quando. Verifichiamo la disponibilità con l'operatore e rispondiamo entro 24 ore. Nessun pagamento su questo sito.",
+    tour: "Tour", choose: "Scegli un tour", date: "Data preferita", guests: "Persone",
+    name: "Nome e cognome", phone: "Telefono (se possibile WhatsApp)", email: "E-mail",
+    message: "Messaggio (facoltativo)", messagePh: "Età dei bambini, hotel o punto di ritiro, richieste particolari",
+    consent: "Acconsento a che {site} trasmetta il mio nome, numero di telefono e i dati della prenotazione all'operatore turistico selezionato per gestire la mia prenotazione, e che {site} e l'operatore possano contattarmi telefonicamente, via WhatsApp o e-mail in merito. {site} potrà inoltre contattarmi dopo il tour per confermarne lo svolgimento. Posso revocare il consenso in qualsiasi momento.",
+    privacy: "Informativa sulla privacy", send: "Invia richiesta", sending: "Invio in corso…",
+    okTitle: "Richiesta inviata", ok: "Grazie. Ti risponderemo entro 24 ore via e-mail o WhatsApp.",
+    err: "Qualcosa è andato storto. Riprova o scrivici su WhatsApp.",
+    wa: "Preferisci WhatsApp? Scrivici"
+  },
+  pl: {
+    title: "Zapytaj o rezerwację",
+    intro: "Napisz, co i kiedy. Sprawdzimy dostępność u organizatora i odpowiemy w ciągu 24 godzin. Bez płatności na tej stronie.",
+    tour: "Wycieczka", choose: "Wybierz wycieczkę", date: "Preferowana data", guests: "Liczba osób",
+    name: "Imię i nazwisko", phone: "Telefon (najlepiej WhatsApp)", email: "E-mail",
+    message: "Wiadomość (opcjonalnie)", messagePh: "Wiek dzieci, hotel lub miejsce odbioru, szczególne życzenia",
+    consent: "Wyrażam zgodę na przekazanie przez {site} mojego imienia i nazwiska, numeru telefonu oraz danych rezerwacji wybranemu organizatorowi wycieczki w celu obsługi mojej rezerwacji oraz na kontakt ze mną w tej sprawie ze strony {site} i organizatora telefonicznie, przez WhatsApp lub e-mailem. {site} może również skontaktować się ze mną po wycieczce, aby potwierdzić jej odbycie. Zgodę mogę w każdej chwili wycofać.",
+    privacy: "Polityka prywatności", send: "Wyślij zapytanie", sending: "Wysyłanie…",
+    okTitle: "Zapytanie wysłane", ok: "Dziękujemy. Odpowiemy e-mailem lub przez WhatsApp w ciągu 24 godzin.",
+    err: "Coś poszło nie tak. Spróbuj ponownie lub napisz do nas na WhatsApp.",
+    wa: "Wolisz WhatsApp? Napisz do nas"
+  },
+  cs: {
+    title: "Poptat rezervaci",
+    intro: "Napište nám, co a kdy. Ověříme dostupnost u provozovatele a odpovíme do 24 hodin. Na tomto webu se neplatí.",
+    tour: "Výlet", choose: "Vyberte výlet", date: "Preferované datum", guests: "Počet osob",
+    name: "Jméno a příjmení", phone: "Telefon (pokud možno WhatsApp)", email: "E-mail",
+    message: "Zpráva (nepovinné)", messagePh: "Věk dětí, hotel nebo místo vyzvednutí, zvláštní přání",
+    consent: "Souhlasím s tím, že {site} předá mé jméno, telefonní číslo a údaje o rezervaci vybranému provozovateli výletu za účelem vyřízení mé rezervace, a že mě {site} a provozovatel mohou v této věci kontaktovat telefonicky, přes WhatsApp nebo e-mailem. {site} mě také může po výletu kontaktovat, aby potvrdil jeho uskutečnění. Souhlas mohu kdykoli odvolat.",
+    privacy: "Zásady ochrany osobních údajů", send: "Odeslat poptávku", sending: "Odesílání…",
+    okTitle: "Poptávka odeslána", ok: "Děkujeme. Odpovíme e-mailem nebo přes WhatsApp do 24 hodin.",
+    err: "Něco se nepovedlo. Zkuste to prosím znovu nebo nám napište na WhatsApp.",
+    wa: "Raději WhatsApp? Napište nám"
+  },
+  hu: {
+    title: "Foglalási kérés",
+    intro: "Írja meg, mit és mikorra szeretne. Egyeztetünk a szervezővel a szabad helyekről, és 24 órán belül válaszolunk. Az oldalon nem kell fizetni.",
+    tour: "Túra", choose: "Válasszon túrát", date: "Kívánt dátum", guests: "Létszám",
+    name: "Teljes név", phone: "Telefonszám (lehetőleg WhatsApp)", email: "E-mail",
+    message: "Üzenet (nem kötelező)", messagePh: "Gyermekek életkora, szálloda vagy felvételi hely, különleges kérések",
+    consent: "Hozzájárulok, hogy a(z) {site} a nevemet, telefonszámomat és a foglalási adataimat továbbítsa a kiválasztott túraszervezőnek a foglalásom kezelése céljából, valamint hogy a(z) {site} és a szervező ezzel kapcsolatban telefonon, WhatsAppon vagy e-mailben felvegye velem a kapcsolatot. A(z) {site} a túra után is kapcsolatba léphet velem annak megerősítése érdekében, hogy a túra megtörtént. Hozzájárulásomat bármikor visszavonhatom.",
+    privacy: "Adatkezelési tájékoztató", send: "Kérés elküldése", sending: "Küldés…",
+    okTitle: "Kérés elküldve", ok: "Köszönjük. 24 órán belül válaszolunk e-mailben vagy WhatsAppon.",
+    err: "Hiba történt. Kérjük, próbálja újra, vagy írjon nekünk WhatsAppon.",
+    wa: "Inkább WhatsApp? Írjon nekünk"
+  },
+  sk: {
+    title: "Požiadať o rezerváciu",
+    intro: "Napíšte nám, čo a kedy. Overíme dostupnosť u prevádzkovateľa a odpovieme do 24 hodín. Na tejto stránke sa neplatí.",
+    tour: "Výlet", choose: "Vyberte výlet", date: "Preferovaný dátum", guests: "Počet osôb",
+    name: "Meno a priezvisko", phone: "Telefón (ak možno WhatsApp)", email: "E-mail",
+    message: "Správa (nepovinné)", messagePh: "Vek detí, hotel alebo miesto vyzdvihnutia, osobitné požiadavky",
+    consent: "Súhlasím s tým, že {site} odovzdá moje meno, telefónne číslo a údaje o rezervácii vybranému prevádzkovateľovi výletu na účely vybavenia mojej rezervácie a že ma {site} a prevádzkovateľ môžu v tejto veci kontaktovať telefonicky, cez WhatsApp alebo e-mailom. {site} ma môže po výlete tiež kontaktovať, aby potvrdil jeho uskutočnenie. Súhlas môžem kedykoľvek odvolať.",
+    privacy: "Zásady ochrany osobných údajov", send: "Odoslať žiadosť", sending: "Odosielanie…",
+    okTitle: "Žiadosť odoslaná", ok: "Ďakujeme. Odpovieme e-mailom alebo cez WhatsApp do 24 hodín.",
+    err: "Niečo sa pokazilo. Skúste to znova alebo nám napíšte na WhatsApp.",
+    wa: "Radšej WhatsApp? Napíšte nám"
+  }
+};
+
+const params = new URLSearchParams(location.search);
+const SUPPORTED = Object.keys(T);
+const htmlLang = document.documentElement.lang.slice(0, 2);
+const lang = SUPPORTED.includes(params.get("lang")) ? params.get("lang")
+           : (SUPPORTED.includes(htmlLang) ? htmlLang : "en");
+const t = T[lang];
+document.documentElement.lang = lang;
+
+const $ = id => document.getElementById(id);
+$("t-title").textContent = t.title;
+$("t-intro").textContent = t.intro;
+$("t-tour").textContent = t.tour;
+$("t-date").textContent = t.date;
+$("t-guests").textContent = t.guests;
+$("t-name").textContent = t.name;
+$("t-phone").textContent = t.phone;
+$("t-email").textContent = t.email;
+$("t-message").textContent = t.message;
+$("message").placeholder = t.messagePh;
+$("t-send").textContent = t.send;
+$("waLink").textContent = t.wa;
+$("waLink").href = "https://wa.me/" + CONFIG.whatsapp;
+document.title = t.title;
+
+// consent text + privacy link
+const consentText = t.consent.replaceAll("{site}", CONFIG.siteName);
+$("t-consent").textContent = consentText + " ";
+const pa = document.createElement("a");
+pa.href = CONFIG.privacy[lang] || CONFIG.privacy.en; pa.target = "_blank"; pa.rel = "noopener"; pa.textContent = t.privacy;
+$("t-consent").appendChild(pa);
+
+// tours (preselect from ?tour=)
+const tourSel = $("tour");
+tourSel.add(new Option(t.choose, ""));
+TOURS.forEach(x => tourSel.add(new Option((x.label[lang] || x.label.en) + " – " + x.name, x.id)));
+if (TOURS.some(x => x.id === params.get("tour"))) tourSel.value = params.get("tour");
+
+// guests 1–12+
+const gs = $("guests");
+for (let i = 1; i <= 12; i++) gs.add(new Option(String(i), String(i)));
+gs.add(new Option("12+", "12+"));
+gs.value = "2";
+
+// earliest date = today
+const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+$("date").min = d.toISOString().slice(0, 10);
+
+// submit (FormSubmit.co AJAX: no page reload, no thank-you page needed)
+const form = $("bookingForm"), result = $("result"), btn = $("t-send");
+form.addEventListener("submit", async e => {
+  e.preventDefault();
+  if (!form.reportValidity()) return;
+  btn.disabled = true; btn.textContent = t.sending;
+
+  const data = Object.fromEntries(new FormData(form));
+  const tour = TOURS.find(x => x.id === data.tour);
+  data.tour = tour ? tour.label.en + " – " + tour.name : data.tour;      // you always read tour names in English
+  data.operator = tour ? tour.operator : "";
+  data.guest_language = lang;
+  data.source_page = location.href;
+  data.consent = "yes";
+  data.consent_given_at = new Date().toISOString();  // proof of consent for your records
+  data.consent_text_shown = consentText;
+  data._subject = "Booking request: " + data.tour + " (" + data.date + ", " + data.guests + " guests)";
+  data._template = "table";
+  data._captcha = "false";
+
+  try {
+    const r = await fetch("https://formsubmit.co/ajax/" + CONFIG.formEmail, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Accept": "application/json" },
+      body: JSON.stringify(data)
+    });
+    const j = await r.json();
+    if (!r.ok || String(j.success) !== "true") throw new Error("send failed");
+    form.hidden = true;
+    result.hidden = false;
+    result.className = "msg";
+    result.innerHTML = "<h2></h2><p></p>";
+    result.querySelector("h2").textContent = t.okTitle;
+    result.querySelector("p").textContent = t.ok;
+  } catch (err) {
+    result.hidden = false;
+    result.className = "msg err";
+    result.textContent = t.err;
+    btn.disabled = false; btn.textContent = t.send;
+  }
+});
+</script>
+</body>
+</html>
